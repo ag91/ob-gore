@@ -63,14 +63,10 @@
              (--remove (s-starts-with-p "gore version" it) it)
              (s-join "" it))))))
 
-(defvar ob-gore-gorepl-show-inline t)
-
 (defun ob-gore-gorepl-retrieve-output-from-process ()
   ""
   (accept-process-output (get-buffer-process gorepl-buffer) 5)
-  (let ((output (s-trim (ob-gore-gorepl-get-comint-output))))
-    (if ob-gore-gorepl-show-inline (endless/eval-overlay output (point))
-      output)))
+  (s-trim (ob-gore-gorepl-get-comint-output)))
 
 (defun ob-gore-gorepl-eval-sync (orig-fun &rest args)
   "Make `gorepl-eval' return the output and interpret import statements as :import, which gore then imports."
@@ -103,8 +99,7 @@
          (args (cdr (assoc :args processed-params)))
          ;; expand the body with `org-babel-expand-body:go'
          (coding-system-for-read 'utf-8) ;; use utf-8 with subprocesses
-         (coding-system-for-write 'utf-8)
-         (ob-gore-gorepl-show-inline nil))
+         (coding-system-for-write 'utf-8))
     (let
         ((results
           (gorepl-eval body)))
