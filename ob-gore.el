@@ -90,6 +90,27 @@
 
 (advice-add 'gorepl-eval :around #'ob-gore-gorepl-eval-sync)
 
+(defvar ob-gore-gorepl-dont-show nil
+  "Don't show gore comint buffer on sending of command.")
+
+(defun gorepl--run-gore (args)
+  "Run an inferior instance of `gore' inside Emacs."
+  (let* ((buffer (comint-check-proc gorepl-buffer-name))
+         (buf (get-buffer-create (or buffer gorepl-buffer))))
+    ;; pop to the "*GO REPL Buffer*" buffer if the process is dead, the
+    ;; buffer is missing or it's got the wrong mode.
+    (unless ob-gore-gorepl-dont-show
+      (display-buffer
+       (if (or buffer (not (derived-mode-p 'gorepl-mode))
+               (comint-check-proc (current-buffer)))
+           buf
+         (current-buffer))))
+    ;; create the comint process if there is no buffer.
+    (unless buffer
+      (apply 'make-comint-in-buffer gorepl-buffer-name buffer
+             gorepl-command nil args)
+      (gorepl-mode))))
+
 (defun org-babel-execute:gore (body params)
   "Run Gore repl on BODY. Ignore PARAMS for now."
   (message "executing Go source code block")
@@ -99,10 +120,9 @@
          (args (cdr (assoc :args processed-params)))
          ;; expand the body with `org-babel-expand-body:go'
          (coding-system-for-read 'utf-8) ;; use utf-8 with subprocesses
-         (coding-system-for-write 'utf-8))
-    (let
-        ((results
-          (gorepl-eval body)))
+         (coding-system-for-write 'utf-8)
+         (ob-gore-gorepl-dont-show t))
+    (let ((results (gorepl-eval body)))
       (if results
           (org-babel-reassemble-table
            (if (or (member "table" (cdr (assoc :result-params processed-params)))
