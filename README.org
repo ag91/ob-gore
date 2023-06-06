@@ -1,0 +1,13 @@
+* Ob-gore
+:PROPERTIES:
+:CREATED:  [2023-06-06 Tue 16:51]
+:ID:       32a81d6d-a5f1-4cd1-9ec1-bf934a3818fa
+:END:
+
+This lets Emacs Org Babel run Go snippets with the Gore Repl, which is
+useful to do literate programming in Go (writing blog posts in my
+case).
+
+For now this only runs the command and retrieves everything as a
+string, but I plan to slowly extend it to support common header
+arguments (e.g., :var and :results).
