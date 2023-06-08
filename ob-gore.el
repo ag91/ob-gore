@@ -2,8 +2,8 @@
 
 ;; Author: Andrea
 ;; Maintainer: Andrea
-;; Version: 0.0.0
-;; Package-Requires: ((s "1.11.0") (gorepl-mode "1.0.0"))
+;; Version: 0.1.0
+;; Package-Requires: ((s "1.11.0") (gorepl-mode "1.0.0") (dash "2.19.1"))
 ;; Homepage: homepage
 ;; Keywords: tools, org-babel
 
@@ -42,9 +42,9 @@
 (require 'ob-eval)
 (require 'ob-ref)
 (require 'gorepl-mode)
+(require 'dash)
 
 
-;; optionally define a file extension for this language
 (add-to-list 'org-babel-tangle-lang-exts '("gore" . "go"))
 (add-to-list 'org-src-lang-modes '("gore" . go))
 
@@ -52,21 +52,25 @@
 
 (defun ob-gore-gorepl-get-comint-output ()
   "Get last output for `gorepl-mode' in comint."
-  (let ((last-command (substring-no-properties gorepl-last-command)))
-    (with-current-buffer gorepl-buffer
-      (save-excursion
-        (goto-char (point-max))
-        (search-backward last-command)
-        (forward-line)
-        (--> (buffer-substring-no-properties (point) (point-max))
-             (s-split "gore>" it t)
-             (--remove (s-starts-with-p "gore version" it) it)
-             (s-join "" it))))))
+  (with-demoted-errors
+      (let ((last-command (substring-no-properties gorepl-last-command)))
+        (with-current-buffer gorepl-buffer
+          (save-excursion
+            (goto-char (point-max))
+            (search-backward last-command)
+            (forward-line)
+            (--> (buffer-substring-no-properties (point) (point-max))
+                 (s-split "gore>" it t)
+                 (--remove (s-starts-with-p "gore version" it) it)
+                 (s-join "" it)))))))
 
 (defun ob-gore-gorepl-retrieve-output-from-process ()
   ""
-  (accept-process-output (get-buffer-process gorepl-buffer) 5)
-  (s-trim (ob-gore-gorepl-get-comint-output)))
+  (while (accept-process-output (get-buffer-process gorepl-buffer) 0 5 t))
+  (--> (ob-gore-gorepl-get-comint-output)
+       s-trim
+       (s-replace-all (--map (cons it "") (s-lines gorepl-last-command)) it))
+  )
 
 (defun ob-gore-gorepl-eval-sync (orig-fun &rest args)
   "Make `gorepl-eval' return the output and interpret import statements as :import, which gore then imports."
@@ -81,7 +85,7 @@
                    (s-join "\n" it)
                    list)))
     (apply orig-fun args)
-    (accept-process-output (get-buffer-process gorepl-buffer) 5)
+    (accept-process-output (get-buffer-process gorepl-buffer) 1)
     (let ((output (ob-gore-gorepl-retrieve-output-from-process)))
       (if (equal output "")
           ;; retrying because gore was probably loading
@@ -114,29 +118,21 @@
 (defun org-babel-execute:gore (body params)
   "Run Gore repl on BODY. Ignore PARAMS for now."
   (message "executing Go source code block")
-  (let* ((tmp-src-file (org-babel-temp-file "go-src-" ".go"))
-         (processed-params (org-babel-process-params params))
-         (flags (cdr (assoc :flags processed-params)))
-         (args (cdr (assoc :args processed-params)))
-         ;; expand the body with `org-babel-expand-body:go'
+  (let* ((processed-params (org-babel-process-params params))
          (coding-system-for-read 'utf-8) ;; use utf-8 with subprocesses
          (coding-system-for-write 'utf-8)
-         (ob-gore-gorepl-dont-show t))
-    (let ((results (gorepl-eval body)))
-      (if results
-          (org-babel-reassemble-table
-           (if (or (member "table" (cdr (assoc :result-params processed-params)))
-                   (member "vector" (cdr (assoc :result-params processed-params))))
-               (let ((tmp-file (org-babel-temp-file "go-")))
-                 (with-temp-file tmp-file (insert (org-babel-trim results)))
-                 (org-babel-import-elisp-from-file tmp-file))
-             (org-babel-read (org-babel-trim results) t))
-           (org-babel-pick-name
-            (cdr (assoc :colname-names params)) (cdr (assoc :colnames params)))
-           (org-babel-pick-name
-            (cdr (assoc :rowname-names params)) (cdr (assoc :rownames params))))
-        ))))
-
+         (ob-gore-gorepl-dont-show t)
+         )
+    (--> body
+         s-lines
+         (--keep
+          (let ((r (gorepl-eval it)))
+            (and (not
+                  (or (s-equals-p "....." r)
+                      (s-blank-p r)))
+                 (format ": %s" r)))
+          it)
+         (s-join "\n" it))))
 (provide 'ob-gore)
 
 ;;; ob-gore.el ends here
